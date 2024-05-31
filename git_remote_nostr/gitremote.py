@@ -89,7 +89,7 @@ class GitRemote:
 
         self._state_event.sign(self._sk.private_key_hex())
 
-        async with Client("ws://127.0.0.1:8080") as c:
+        async with Client(self._relay) as c:
             c.publish(self._state_event)
             await asyncio.sleep(1)
             #FIXME: make publish() wait for the relay's response.
