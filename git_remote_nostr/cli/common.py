@@ -21,11 +21,11 @@ async def get_helper(remote_name, url):
     """
     Return a Helper configured to point at the given URL.
 
-    url: nostr://<npub>/<project>
+    url: nostr+blossom://<npub>/<project>
     """
     url = urlparse(url)
-    if url.scheme != "nostr":
-        error('Git remote URL must start with "nostr://".')
+    if url.scheme != "nostr+blossom":
+        error('Git remote URL must start with "nostr+blossom://".')
 
     if url.password or url.username:
         raise SystemExit(
@@ -35,9 +35,11 @@ async def get_helper(remote_name, url):
     nsec = git.get_config_value("nostr.nsec") or git.get_config_value("nostr.sec")
     if nsec:
         if nsec.startswith("nsec1"):
+            # Bech32 encoded secret key
             sk = Keys(nsec)
         else:
-            # nostr.sec=1 is valid.
+            # Hex encoded secret key.
+            # NOTE: nostr.sec=1 is a perfectly valid value for testing (npub: .
             sk = Keys('{:>064s}'.format(nsec))
 
     remote_npub = url.netloc

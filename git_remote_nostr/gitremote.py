@@ -30,6 +30,7 @@ class GitRemote:
         self._remote_name = remote_name
         self._verbosity = verbosity
         self._relay = git.get_config_value("nostr.relay")
+        self._objectformat = git.get_config_value("extensions.objectformat") or "sha1"
         if not self._relay:
             raise Exception("Relay must be set via 'git config --global --add nostr.relay wss://relay.for.repos'")
 
@@ -41,9 +42,10 @@ class GitRemote:
     async def get_refs(self, for_push):
         """
         Return (first_push, refs) tuple.
-        Returned refs contains refs present on the remote.
-            Keys are refnames, values are Ref or Symref instances.
-        Returned first_push indicates the repo is nonexistent yet.
+        Returned `first_push` indicates the repo is nonexistent yet.
+        Returned `refs` dict contains refs present on the remote.
+            Its keys are refnames,
+            values are tuple of (sha1, blossom_key).
         """
         if self._state_event is None:
             await self._fetch_state_event()
@@ -54,32 +56,39 @@ class GitRemote:
             else:
                 return True, {}
 
-        refs = []
+        refs = {}
         for t in self._state_event.tags:
             if t[0] == "ref":
                 refname = "refs/" + t[1]
                 sha = t[2]
-                refs.append((sha, refname))
+                refs[refname] = (sha, t[3])
 
         return False, refs
 
     async def _fetch_state_event(self):
-        async with Client(self._relay) as c:
-            evs = await c.query({
-                "kinds": [STATE_KIND],
-                "authors": [self._remote_pubkey],
-                "#d": [self._repo]
-            })
-            if len(evs) == 0:
-                self._trace(
-                    f"Git repo state event not found on relay [{self._relay}].",
-                    level=Level.INFO)
-                return
+        try:
+            async with Client(self._relay) as c:
+                evs = await c.query({
+                    "kinds": [STATE_KIND],
+                    "authors": [self._remote_pubkey],
+                    "#d": [self._repo]
+                })
+                if len(evs) == 0:
+                    self._trace(
+                        f"Git repo state event not found on relay [{self._relay}].",
+                        level=Level.INFO)
+                    return
 
-            assert len(evs) == 1, evs
-            self._state_event = evs[0]
+                assert len(evs) == 1, evs
+                self._state_event = evs[0]
+
+        except ConnectionError as e:
+            self._trace(f"Cannot connect to relay [{self._relay}]: {str(e)}", level=Level.INFO)
+            raise SystemExit(1)
 
     async def _publish_state_event(self):
+        self._trace("STATE EVENT", level=Level.INFO)
+        self._trace(self._state_event.tags.tags, level=Level.INFO)
         # created_at is converted to datetime.datetime in setter.
         old_created_at = self._state_event.created_at
         self._state_event.created_at = int(time.time())
@@ -99,6 +108,7 @@ class GitRemote:
 
         for t in self._state_event.tags:
             if t[0] == "ref" and t[1] == ref[5:]:
+                self._write_blossom_key(t[2], bytes.fromhex(t[3]))
                 return t[2]
 
         return None
@@ -106,12 +116,15 @@ class GitRemote:
     def set_ref(self, ref, sha):
         assert ref.startswith("refs/"), ref
 
+        blossom_key = self._read_blossom_key(sha)
+
         for t in self._state_event.tags:
             if t[0] == "ref" and t[1] == ref[5:]:
                 t[2] = sha
+                t[3] = blossom_key.hex()
                 return
 
-        self._state_event.tags.tags.append(["ref", ref[5:], sha])
+        self._state_event.tags.tags.append(["ref", ref[5:], sha, blossom_key.hex()])
 
     def set_symref(self, symref, ref):
         for t in self._state_event.tags:
@@ -205,3 +218,23 @@ class GitRemote:
             stderr('info: %s\n' % message)
         elif level >= Level.DEBUG:
             stderr('debug: %s\n' % message)
+
+    def _blossom_path(self, sha):
+        # sha is in hex
+        prefix = sha[:2]
+        suffix = sha[2:]
+        return os.path.join(self._git_dir, "blossom", prefix, suffix)
+
+    def _read_blossom_key(self, sha):
+        # Takes hex sha1, returns binary sha256
+        path = self._blossom_path(sha)
+        if not os.path.exists(path):
+            return None
+        return open(path, "rb").read()
+
+    def _write_blossom_key(self, sha, blossom_key):
+        path = self._blossom_path(sha)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path + ".tmp", "wb") as f:
+            f.write(blossom_key)
+        os.rename(path + ".tmp", path)

@@ -1,70 +1,58 @@
-git-remote-nostr
-================
+git-remote-nostr+blossom
+========================
 
-It is a transparent bidirectional bridge between git and nostr.
-It lets you push your git repositories to blossom servers and maintains
-branch and tags info using NIP-34 kind 30618 repository state events.
+This program lets you push git repositories onto nostr relays + blossom servers.
 
-DO NOT USE FOR PRODUCTION!
+It produces kind 30618 events on the relay that is specified in NIP-34.
 
-This is a proof of concept for the following reasons:
+This is Proof of Concept code for the following reasons:
+* It supports a single blossom server.
+* It supports a single nostr relay.
+* It supports a single repo owner.
+* It is relatively but not prohibively slow. The initial cloning of large projects can take a while, but everyday work is fine.
 
-* Only sha256 repositories are supported, which severely limits its usefulness.
-* Git object packing is not yet supported, which impacts performance in large repos.
-* Git objects are stored uncompressed so as their hashes match the git internal object ids.
-* Only single owner repos are supported.
-* Relay and blossom servers are fixed via git config.
+Usage (PoC)
+-----------
 
-Usage
------
+For now, the nostr relay and the blossom server must be manually set in git config:
 
-Work-in-progress! sha1 support is coming soon!
-
-To push a repo to nostr, the repository object format MUST be sha256, created with:
 ``` bash
-mkdir myproject
-cd myproject
-git init --object-format=sha256
+git config --global --add nostr.relay wss://your.relay.org
+git config --global --add nostr.blossom https://your.blossom.org:3000
 ```
 
-Work on the project, then push to nostr:
+If you want to push, set your secret key as hex or nsec in ``nostr.sec`` or ``nostr.nsec``:
 ``` bash
-git remote add origin nostr://<npub>/<myproject>
-git push origin --all
+ git config --global --add nostr.sec 1  # This is a test key with npub=npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d
 ```
 
-As long as the nostr.sec config was set according to npub, the repo will be pushed and signed using the secret key.
-The repository will be created automatically the first time you push.
+Now you can use the ``nostr+blossom://`` scheme in your git remote URLs.
+``` bash
+git remote add nostr nostr+blossom://<npub>/<project>
+git push origin nostr  # Use -v to see what's going on under the hood.
+```
+
+The repository is created automatically the first time you push.
 
 Install
 -------
 
 ``` bash
-git clone git@github.com/lez/git-remote-nostr
-cd git-remote-nostr
-python -mvenv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install .
-# Then make sure git-remote-nostr executable is in your $PATH.
+$ pip install git+https://github.com/lez/git-remote-nostr
 
-git config --global --add nostr.relay wss://your.git.relay
-git config --global --add nostr.blossom http://127.0.0.1:3000
-
-# If you want to push to remotes, set your secret key as hex or nsec:
-# MAKE SURE IT IS NOT SAVED IN YOUR SHELL HISTORY by appending a space in the beginning, unsetting HISTFILE or BASH_HISTORY envvar, or killing the shell with a KILL signal afterwards.
- git config --global --add nostr.sec 1
+The executable `git-remote-nostr+blossom` should be now in your PATH.
 ```
 
-Notes
------
+Notes, bugs
+-----------
 
-- The remote helper does not support shallow cloning.
-
-- Cloning a repository or fetching a lot of objects produces lots of loose
-  objects. To save space in the local repository, run ``git gc --aggressive``.
-
-- The work is based on git-remote-dropbox from Anish Athalye.
+- ``--force-with-lease`` is not supported yet.
+- packing git objects is not supported (as far as I know). This would make a huge improvement on speed.
+- shallow cloning is not supported.
+- progress bar is not very helpful when cloning.
+- you should run ``git gc --aggressive`` regularly.
+- This project is based on git-remote-dropbox from Anish Athalye.
+- Make sure you do not leave your nsec in your shell history in order to not leak it accidentally in a screenshare session.
 
 Design
 ------
@@ -72,6 +60,19 @@ Design
 To read about the design of git-remote-nostr, see `DESIGN.rst` file.
 This could be especially useful if you're thinking about contributing to the
 project.
+
+Future Plans
+------------
+
+Planned remote URL formats:
+
+* nostr+blossom://your@nip-05.address/project
+* nostr+blossom://nprofile.../project
+* nostr+blossom://nevent...
+
+The bootstrap relay will be read either from the relay list in the nip-05 json or decoded from nprofile or nevent "relay" field.
+
+Also, deeper NIP-34 integration is planned.
 
 Contributing
 ------------
@@ -82,5 +83,5 @@ If you want to join development, contact me at the npub `npub1elta7cneng3w8p9y4d
 License
 -------
 
-Copyright (c) 2015-2019 Anish Athalye. Released under the MIT License. See `LICENSE.rst` for details.
-Copyright (c) 2024 Lez <npub1elta7cneng3w8p9y4dw633qzdjr4kyvaparuyuttyrx6e8xp7xnq32cume>.
+Copyright (c) 2015-2019 Anish Athalye. Released under the MIT License.
+Copyright (c) 2024 Lez <nostr:npub1elta7cneng3w8p9y4dw633qzdjr4kyvaparuyuttyrx6e8xp7xnq32cume>.

@@ -44,32 +44,25 @@ setup(
     license='MIT',
 
     classifiers=[
-        'Development Status :: 5 - Production/Stable',
-
+        'Development Status :: 1 - Proof of Concept',
         'Intended Audience :: Developers',
         'Topic :: Software Development :: Version Control',
-
-        'License :: OSI Approved :: AGPL License',
-
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
+        'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.2',
-        'Programming Language :: Python :: 3.3',
-        'Programming Language :: Python :: 3.4',
-        'Programming Language :: Python :: 3.5',
-        'Programming Language :: Python :: 3.6',
     ],
 
-    keywords='git nostr blossom',
+    keywords='git remote nostr blossom',
 
     packages=find_packages(),
 
-    install_requires=[],
+    install_requires=[
+        'monstr==0.1.9',
+        'aiohttp>=3.9.5,<4'
+    ],
 
     entry_points={
         'console_scripts': [
-            'git-remote-nostr=git_remote_nostr.cli.helper:main',
+            'git-remote-nostr+blossom=git_remote_nostr.cli.helper:main',
 #            'git-nostr-manage=git_remote_nostr.cli.manage:main',
         ],
     },

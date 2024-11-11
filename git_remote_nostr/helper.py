@@ -11,7 +11,7 @@ import random
 import sys
 import zlib
 import aiohttp
-
+from aiohttp.client_exceptions import ClientConnectorError
 from monstr.event.event import Event
 
 from git_remote_nostr.constants import CONCURRENCY, MAX_RETRIES
@@ -27,20 +27,24 @@ class Helper(object):
         self._path = path
         self._concurrency = concurrency
         self._verbosity = Level.INFO  # default verbosity
-        self._refs = []  # [(sha, refname)]
+        self._refs = {}  # {refname: (sha, blossom_key)}
         self._pushed = {}  # Same, but just pushed (?).
         self._first_push = False
         self._remote = None
         self._semaphore = asyncio.Semaphore(self._concurrency)
         self._git_dir = os.environ["GIT_DIR"]
         self._blossom_server = git.get_config_value("nostr.blossom")
+        self._objectformat = git.get_config_value("extensions.objectformat") or "sha1"
+        self._have_blossom_key = dict()
+        self._blossom_keys = {}
 
     @property
     def verbosity(self):
         return self._verbosity
 
     def _write(self, message=""):
-        """Write a message to standard output."""
+        """Write a message to standard output, which is read by the git process."""
+        self._trace(f"> {message}")
         stdout('%s\n' % message)
 
     def _trace(self, message, level=Level.DEBUG, exact=False):
@@ -67,7 +71,7 @@ class Helper(object):
         Log a fatal error and exit.
         """
         self._trace(message, Level.ERROR)
-        e_repoxit(1)
+        raise SystemExit(1)
 
     async def connect(self):
         """Find repo announcement event and connect to relay(s)."""
@@ -124,22 +128,27 @@ class Helper(object):
         for_push = 'for-push' in line
 
         first_push, self._refs = await self._remote.get_refs(for_push=for_push)
-        if (first_push, self._refs) == (None, []):
+        if (first_push, self._refs) == (None, {}):
             # if we're pushing, it's okay if nothing exists beforehand,
             # but it's good to notify the user just in case
             self._trace('repository is empty', Level.INFO)
 
         if first_push:
+            self._trace('First push to remote repository.', Level.INFO)
             self._first_push = True
 
-        for ref in self._refs:
-            self._trace(f"remote ref: {ref[0]} {ref[1]}")
+        for refname, refval in self._refs.items():
+            self._trace(f"remote ref: {refval[0]} {refname}")
 
-        #WE_ARE_HERE: Add support for sha1.
-        self._write(":object-format sha256")
+        if self._objectformat == "sha256":
+            self._write(":object-format sha256")
+        else:
+            assert self._objectformat == "sha1"
 
-        for sha, refname in self._refs:
-            self._write('%s %s' % (sha, refname))
+        self._trace(f"Git repository object format is {self._objectformat}.")
+
+        for refname, sha in self._refs.items():
+            self._write('%s %s' % (sha[0], refname))
 
         if not for_push:
             head = await self._remote.read_symbolic_ref('HEAD')
@@ -148,6 +157,10 @@ class Helper(object):
                 self._write(f'@{head} HEAD')
             else:
                 self._trace('no default branch on remote', Level.INFO)
+
+        for sha, blossom_key in self._refs.values():
+            self._trace(f"Set blossom key of {sha} to {blossom_key} in memory.")
+            self._blossom_keys[sha] = blossom_key
 
         self._write()
 
@@ -204,56 +217,50 @@ class Helper(object):
         self._write('ok %s' % ref)
 
     async def _push(self, src, dst):
-        """Push src to dst on the remote."""
+        """Push local src to remote dst."""
         if self._remote._remote_pubkey != self._sk.public_key_hex():
-            error("Only the repository owner can push. Maintainer push is coming soon!")
+            error("Only the repository owner can push." +\
+                " Push by contributor is not yet supported.")
 
         force = False
         if src.startswith('+'):
             src = src[1:]
             force = True
 
-        present = [sha for (sha, name) in self._refs]
-        present.extend([sha for (sha, name) in self._pushed])
-        # before updating the ref, write all objects that are referenced
+        present = [sha for (sha, blossom_key) in self._refs.values()]
+        # present.extend([sha for (sha, name) in self._pushed])
+        # Store all referenced git objects in blossom, then update ref on the relays.
+        self._trace(f"Present refs: {', '.join(present)}")
         objects = git.list_objects(src, present)
+        self._trace(f"{len(objects)} objects to push: {', '.join(objects)}")
+
+        # Initialize progressbar.
+        self._total = len(objects)
+        self._trace('', level=Level.INFO, exact=True)
+        self._done = 0
+
         try:
             # Upload objects in parallel.
             tasks = []
-            for sha in objects:
+            for sha in reversed(objects):
+                self._trace(f"Adding task put_object({sha}).")
                 tasks.append(asyncio.create_task(self._put_object(sha)))
+                # Create async event for synchornizing sha256 calc of git objects.
+                self._have_blossom_key[sha] = asyncio.Event()
 
-            # Show progress.
-            total = len(objects)
-            self._trace('', level=Level.INFO, exact=True)
-            done = 0
+                if len(tasks) < self._concurrency:
+                    continue
 
-            while tasks:
-                tasks_done, pending =\
-                    await asyncio.wait(
-                        tasks, timeout=15, return_when=asyncio.FIRST_COMPLETED)
-                done += len(tasks_done)
+                tasks = await self.handle_tasks(tasks)
 
-                # Raise any errors that occurred in async tasks.
-                for t in tasks_done:
-                    if t.exception():
-                        raise t.exception()
+            while len(tasks):
+                tasks = await self.handle_tasks(tasks)
 
-                pct = int(float(done) / total * 100)
-                message = '\rWriting objects: {:3.0f}% ({}/{})'.format(pct, done, total)
-                if done == total:
-                    message = '%s, done.\n' % message
-                    self._trace(message, level=Level.INFO, exact=True)
-                    break
-
-                self._trace(message, level=Level.INFO, exact=True)
-                tasks = pending
-
-        except Exception:
+        except Exception as e:
             if self.verbosity >= Level.DEBUG:
                 raise  # re-raise exception so it prints out a stack trace
             else:
-                self._fatal('exception while writing objects (run with -v for details)\n')
+                self._fatal(f'{str(e)} while storing objects (run with -v for traceback)\n')
 
         sha = git.ref_value(src)
         self._trace(f"Upload finished. HEAD is [{sha}].")
@@ -272,6 +279,38 @@ class Helper(object):
         else:
             self._write('error %s %s' % (dst, error))
 
+    async def handle_tasks(self, tasks):
+        self._trace(f"Waiting for {len(tasks)} tasks.")
+        tasks_done, pending =\
+            await asyncio.wait(
+                tasks, timeout=15, return_when=asyncio.FIRST_COMPLETED)
+        self._trace(f"Done: {len(tasks_done)} tasks.")
+        self._done += len(tasks_done)
+
+        exc = None
+        # Raise any errors that occurred in async tasks.
+        for t in tasks_done:
+            e = t.exception()
+            if e:
+                exc = e
+                self._trace(f"{t} had exception {str(e)}")
+
+        if exc:
+            for p in pending:
+                p.cancel()
+            # We can raise now that all (pending, done) exceptions were retrieved.
+            raise exc
+
+        pct = int(float(self._done) / self._total * 100)
+        message = '\rWriting objects: {:3.0f}% ({}/{})'.format(pct, self._done, self._total)
+        if self._done == self._total:
+            message = '%s, done.\n' % message
+            self._trace(message, level=Level.INFO, exact=True)
+            return []
+
+        self._trace(message, level=Level.INFO, exact=True)
+        return list(pending)
+
     def _ref_name_from_path(self, path):
         """
         Return the ref name given the full path of the remote ref.
@@ -283,11 +322,11 @@ class Helper(object):
     async def _blossom_store(self, data, sha256):
         auth_event = Event(
             kind=24242,
-            content=f"Upload {sha256}",
+            content=f"Upload {sha256.hex()}",
             pub_key=self._sk.public_key_hex(),
             tags=[
                 ["t", "upload"],
-                ["x", sha256],
+                ["x", sha256.hex()],
                 ["expiration", "1777777777"]
             ]
         )
@@ -312,20 +351,43 @@ class Helper(object):
                 await resp.text()
 
     async def _put_object(self, sha):
+        self._trace(f"_put_object({sha})")
         async with self._semaphore:
             return await self.__put_object(sha)
 
     async def __put_object(self, sha):
         """Upload an object to blossom."""
+        if self._objectformat == "sha256":
+            raise Exception("WE_ARE_HERE: re-add sha256 support")
+
+        self._trace(f"__put_object({sha})")
+
         data = git.encode_object(sha)
+        for dep in git.referenced_objects(sha):
+            # Check if blossom key of referenced git object is on disk.
+            blossom_key = self._remote._read_blossom_key(dep)
+            if blossom_key:
+                data += blossom_key
+                continue
 
-        # data = zlib.compress(data)
-        #NOTE: If we want to compress data with zlib for storage,
-        # we need to store at a different SHA256 key because
-        # blossom uses content addressing, git doesn't..
+            await self._have_blossom_key[dep].wait()
+            blossom_key = self._remote._read_blossom_key(dep)
+            data += blossom_key
 
-        await self._blossom_store(data, sha)
-        self._trace(f'stored {sha} on blossom.')
+        data = zlib.compress(data)
+        #NOTE: We can compress data with zlib for storage,
+        # because the blossom key (sha256) is not based
+        # on the uncompressed data. If it was a single sha256
+        # hash that is both the hash of the data and the
+        # commit id, we would need to store it plaintext.
+
+        # Blossom key of current git object
+        blossom_key = hashlib.sha256(data).digest()
+        self._remote._write_blossom_key(sha, blossom_key)
+        self._have_blossom_key[sha].set()
+
+        await self._blossom_store(data, blossom_key)
+        self._trace(f'Stored {sha} on blossom server.')
 
     async def _download(self, sha):
         async with self._semaphore:
@@ -333,24 +395,39 @@ class Helper(object):
 
     async def __download(self, sha):
         """Download sha object from blossom."""
+        blossom_key = self._blossom_keys[sha]
+        assert blossom_key
+
+        self._trace(f"fetching {blossom_key}")
         async with aiohttp.ClientSession() as sess:
-            async with sess.get(f"{self._blossom_server}/{sha}") as resp:
+            async with sess.get(f"{self._blossom_server}/{blossom_key}") as resp:
                 if resp.status != 200:
                     txt = await resp.text()
+                    #WE_ARE_HERE: error handling
                     raise Exception(txt)
 
                 data = await resp.read()
 
         assert len(data) > 0, data
 
-        header, obj_data = data.split(b"\x00", 1)
+        decompressed = zlib.decompress(data)
+        # Decompressed data starts with the git object in the classic git format.
+        # Referenced git objects' blossom hashes are read from the end.
+        header, tail = decompressed.split(b"\x00", 1)
         obj_type, obj_len = header.split()
         obj_len = int(obj_len)
+        obj_data = tail[:obj_len]
+        blossom_keys = tail[obj_len:]
 
         computed_sha = git.decode_object_raw(obj_type, obj_data)
 
         if computed_sha != sha:
             raise Exception(f"hash mismatch {computed_sha} != {sha}")
+
+        for referenced_sha in git.referenced_objects(sha):
+            self._blossom_keys[referenced_sha] = blossom_keys[:32].hex()
+            blossom_keys = blossom_keys[32:]
+        assert len(blossom_keys) == 0
 
         return sha
 

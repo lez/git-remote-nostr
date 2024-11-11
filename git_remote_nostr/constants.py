@@ -2,5 +2,5 @@ import os
 
 
 DEVNULL = open(os.devnull, 'w')
-CONCURRENCY = 20
+CONCURRENCY = 21
 MAX_RETRIES = 3
