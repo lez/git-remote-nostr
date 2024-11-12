@@ -1,8 +1,8 @@
 import sys
 import asyncio
 
-from git_remote_nostr.util import Level, stdout_to_binary
-from git_remote_nostr.cli.common import error, get_helper
+from git_remote_blossom.util import Level, stdout_to_binary
+from git_remote_blossom.cli.common import error, get_helper
 
 
 async def _main():

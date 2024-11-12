@@ -14,10 +14,10 @@ import aiohttp
 from aiohttp.client_exceptions import ClientConnectorError
 from monstr.event.event import Event
 
-from git_remote_nostr.constants import CONCURRENCY, MAX_RETRIES
-from git_remote_nostr.util import readline, Level, stdout, stderr, Poison
-from git_remote_nostr import git
-from git_remote_nostr.gitremote import GitRemote, GitRemoteError
+from git_remote_blossom.constants import CONCURRENCY, MAX_RETRIES
+from git_remote_blossom.util import readline, Level, stdout, stderr, Poison
+from git_remote_blossom import git
+from git_remote_blossom.gitremote import GitRemote, GitRemoteError
 
 
 class Helper(object):

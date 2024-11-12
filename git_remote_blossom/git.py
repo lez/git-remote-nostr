@@ -1,4 +1,4 @@
-from git_remote_nostr.constants import DEVNULL
+from git_remote_blossom.constants import DEVNULL
 
 import subprocess
 import zlib

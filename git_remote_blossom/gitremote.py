@@ -9,8 +9,8 @@ from monstr.encrypt import Keys
 from monstr.event.event import Event
 from monstr.client.client import Client
 
-from git_remote_nostr import git
-from git_remote_nostr.util import stderr, Level
+from git_remote_blossom import git
+from git_remote_blossom.util import stderr, Level
 
 
 STATE_KIND = 30618

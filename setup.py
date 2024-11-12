@@ -63,7 +63,6 @@ setup(
     entry_points={
         'console_scripts': [
             'git-remote-blossom=git_remote_blossom.cli.helper:main',
-#            'git-nostr-manage=git_remote_nostr.cli.manage:main',
         ],
     },
 )

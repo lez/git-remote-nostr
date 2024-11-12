@@ -8,9 +8,9 @@ except ImportError:
 
 from monstr.encrypt import Keys
 
-from git_remote_nostr import git
-from git_remote_nostr.util import Config, stderr
-from git_remote_nostr.helper import Helper
+from git_remote_blossom import git
+from git_remote_blossom.util import Config, stderr
+from git_remote_blossom.helper import Helper
 
 
 def error(msg):
