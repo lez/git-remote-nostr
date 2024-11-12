@@ -1,4 +1,4 @@
-git-remote-nostr+blossom
+git-remote-blossom
 ========================
 
 This program lets you push git repositories onto nostr relays + blossom servers.
@@ -26,10 +26,10 @@ If you want to push, set your secret key as hex or nsec in ``nostr.sec`` or ``no
  git config --global --add nostr.sec 1  # This is a test key with npub=npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d
 ```
 
-Now you can use the ``nostr+blossom://`` scheme in your git remote URLs.
+Now you can use the ``blossom://`` scheme in your git remote URLs.
 ``` bash
-git remote add nostr nostr+blossom://<npub>/<project>
-git push origin nostr  # Use -v to see what's going on under the hood.
+git remote add blossom blossom://<npub>/<project>
+git push origin blossom  # Use -v to see what's going on under the hood.
 ```
 
 The repository is created automatically the first time you push.
@@ -38,9 +38,9 @@ Install
 -------
 
 ``` bash
-$ pip install git+https://github.com/lez/git-remote-nostr
+$ pip install git+https://github.com/lez/git-remote-blossom
 
-The executable `git-remote-nostr+blossom` should be now in your PATH.
+The executable `git-remote-blossom` should be now in your PATH.
 ```
 
 Notes, bugs
@@ -57,7 +57,7 @@ Notes, bugs
 Design
 ------
 
-To read about the design of git-remote-nostr, see `DESIGN.rst` file.
+To read about the design of git-remote-blossom, see `DESIGN.rst` file.
 This could be especially useful if you're thinking about contributing to the
 project.
 
@@ -66,11 +66,12 @@ Future Plans
 
 Planned remote URL formats:
 
-* nostr+blossom://your@nip-05.address/project
-* nostr+blossom://nprofile.../project
-* nostr+blossom://nevent...
+* blossom://your@nip-05.address/project
+* blossom://nprofile.../project
+* blossom://nevent...
+* blossom://npub/relay/project
 
-The bootstrap relay will be read either from the relay list in the nip-05 json or decoded from nprofile or nevent "relay" field.
+The bootstrap relay will be read either from the relay list in the nip-05 json or decoded from nprofile or nevent "relay" field or straight from the URL.
 
 Also, deeper NIP-34 integration is planned.
 

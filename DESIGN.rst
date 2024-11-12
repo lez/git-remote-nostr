@@ -5,7 +5,7 @@ Many things are designed the way they are in order to have the same semantics
 and guarantees as a regular Git remote *without running any special code on the
 server side*.
 
-git-remote-nostr+blossom is a `Git remote helper
+git-remote-blossom is a `Git remote helper
 <https://www.kernel.org/pub/software/scm/git/docs/gitremote-helpers.html>`__.
 
 To support all Git operations, we need to support one capability for pushing
@@ -59,7 +59,7 @@ trim the sha256 hashes from the end of the objects before storing them on disk.
 By doing this transformation we get back the original, valid objects.
 
 So the objects on a blossom server are invalid objects in terms of git, but they
-hold the sha256 links to other objects for the git-remote-nostr+blossom.
+hold the sha256 links to other objects for the git-remote-blossom.
 
 Objects
 ~~~~~~~
@@ -74,7 +74,7 @@ The files may not actually be identical on disk due to differences in DEFLATE
 compression, but in fact, if the files are copied as-is into a local Git
 repository, Git will recognize the files as valid.
 
-git-remote-nostr+blossom stores all objects as loose objects - it does not pack
+git-remote-blossom stores all objects as loose objects - it does not pack
 objects. This means that we do not perform delta compression. In addition, we
 do not perform garbage collection of dangling objects. DVMs can do that later.
 

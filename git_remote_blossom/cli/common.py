@@ -21,11 +21,11 @@ async def get_helper(remote_name, url):
     """
     Return a Helper configured to point at the given URL.
 
-    url: nostr+blossom://<npub>/<project>
+    url: blossom://<npub>/<project>
     """
     url = urlparse(url)
-    if url.scheme != "nostr+blossom":
-        error('Git remote URL must start with "nostr+blossom://".')
+    if url.scheme != "blossom":
+        error('Git remote URL must start with "blossom://".')
 
     if url.password or url.username:
         raise SystemExit(
@@ -44,8 +44,8 @@ async def get_helper(remote_name, url):
 
     remote_npub = url.netloc
     if not remote_npub.startswith("npub1"):
-        #TODO: Add support for nevent1 and nip5 remote URL.
-        error("Invalid remote URL. Use nostr://<npub>/<project>")
+        #TODO: Add support for other URL formats, see README.
+        error("Invalid remote URL. Use blossom://<npub>/<project>")
 
     repo = url.path.split("/")[1]
     path = f"{remote_npub}/{repo}"

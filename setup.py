@@ -29,14 +29,14 @@ def find_version(*file_paths):
 
 
 setup(
-    name='git-remote-nostr',
+    name='git-remote-blossom',
 
-    version=find_version('git_remote_nostr', '__init__.py'),
+    version=find_version('git_remote_blossom', '__init__.py'),
 
     description='A transparent bidirectional bridge between Git and Nostr',
     long_description=long_description,
 
-    url='https://githab.com/lez/git-remote-nostr',
+    url='https://githab.com/lez/git-remote-blossom',
 
     author='Lez',
     author_email='lez@nostr.hu',
@@ -62,7 +62,7 @@ setup(
 
     entry_points={
         'console_scripts': [
-            'git-remote-nostr+blossom=git_remote_nostr.cli.helper:main',
+            'git-remote-blossom=git_remote_blossom.cli.helper:main',
 #            'git-nostr-manage=git_remote_nostr.cli.manage:main',
         ],
     },
